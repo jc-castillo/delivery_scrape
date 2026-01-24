@@ -40,8 +40,9 @@ Thumbs.db
 # Project specific
 .claude/
 
+# Large data files (can be re-downloaded)
+pages/
+
 # Secrets (never commit these!)
-*.csv
-!requirements.txt
 accessKeys.csv
 credentials.csv

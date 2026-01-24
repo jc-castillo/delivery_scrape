@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from config import (
     CC_INDEXES, PLATFORMS, DATA_DIR, PAGES_DIR, OUTPUT_CSV, INDEX_CACHE_DIR
 )
-from cc_index import CommonCrawlIndex
+from cc_athena import AthenaIndexQuery
 from cc_fetch import CommonCrawlFetcher, filter_listing_urls
 from extract_data import extract_all, deduplicate_restaurants, save_to_csv, generate_summary
 
@@ -43,43 +43,35 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def run_index_step(crawl_ids: list[str], use_api: bool = True) -> Path:
+def run_index_step(crawl_ids: list[str], use_cache: bool = True) -> Path:
     """
-    Step 1: Query Common Crawl index for platform URLs.
+    Step 1: Query Common Crawl index for platform URLs using Athena.
 
     Args:
         crawl_ids: List of crawl IDs to query
-        use_api: Whether to use CDX API (True) or direct S3 (False)
+        use_cache: Whether to use cached results
 
     Returns:
         Path to the index results file
     """
     logger.info("="*60)
-    logger.info("STEP 1: Querying Common Crawl Index")
+    logger.info("STEP 1: Querying Common Crawl Index via Athena")
     logger.info("="*60)
 
-    cc_index = CommonCrawlIndex()
+    athena = AthenaIndexQuery()
 
     all_results = {}
     for crawl_id in crawl_ids:
         logger.info(f"\nProcessing crawl: {crawl_id}")
 
-        # Check cache first
-        cached = cc_index.load_index_cache(crawl_id)
-        if cached:
-            logger.info(f"Using cached results for {crawl_id}")
-            all_results[crawl_id] = cached
-            continue
-
         crawl_results = {}
         for platform_key in PLATFORMS:
             logger.info(f"Querying {platform_key}...")
-            urls = cc_index.find_platform_urls(platform_key, crawl_id, use_api=use_api)
+            urls = athena.query_platform(platform_key, crawl_id, use_cache=use_cache)
             crawl_results[platform_key] = urls
             logger.info(f"Found {len(urls)} URLs for {platform_key}")
 
         all_results[crawl_id] = crawl_results
-        cc_index._save_index_cache(crawl_id, crawl_results)
 
     # Save combined results
     output_file = DATA_DIR / "index_results.json"
@@ -96,6 +88,26 @@ def run_index_step(crawl_ids: list[str], use_api: bool = True) -> Path:
     logger.info(f"Results saved to: {output_file}")
 
     return output_file
+
+
+def normalize_athena_record(record: dict) -> dict:
+    """
+    Normalize Athena record format to match what the fetcher expects.
+
+    Athena returns: warc_filename, warc_record_offset, warc_record_length
+    Fetcher expects: filename, offset, length
+    """
+    return {
+        'url': record.get('url', ''),
+        'timestamp': record.get('fetch_time', '').replace(' ', 'T').replace('.000', ''),
+        'status': record.get('fetch_status', '200'),
+        'mime': record.get('content_mime_detected', 'text/html'),
+        'filename': record.get('warc_filename', ''),
+        'offset': record.get('warc_record_offset', '0'),
+        'length': record.get('warc_record_length', '0'),
+        'crawl_id': record.get('crawl_id', ''),
+        'platform': record.get('platform', ''),
+    }
 
 
 def run_fetch_step(index_file: Path, limit: int = None,
@@ -126,14 +138,17 @@ def run_fetch_step(index_file: Path, limit: int = None,
         logger.info(f"\nFetching from: {crawl_id}")
 
         for platform, records in platforms.items():
-            # Filter to listing pages if requested
-            if listings_only:
-                records = filter_listing_urls(records, platform)
+            # Normalize Athena records to fetcher format
+            records = [normalize_athena_record(r) for r in records]
 
             # Add metadata
             for record in records:
                 record['crawl_id'] = crawl_id
                 record['platform'] = platform
+
+            # Filter to listing pages if requested
+            if listings_only:
+                records = filter_listing_urls(records, platform)
 
             # Apply limit
             if limit:
@@ -248,9 +263,9 @@ def main():
 
     # Index step options
     parser.add_argument(
-        "--use-s3",
+        "--no-cache",
         action="store_true",
-        help="Use direct S3 access instead of CDX API"
+        help="Don't use cached index results"
     )
 
     # Fetch step options
@@ -283,7 +298,7 @@ def main():
 
     # Run pipeline
     if args.all or args.step == "index":
-        index_file = run_index_step(crawl_ids, use_api=not args.use_s3)
+        index_file = run_index_step(crawl_ids, use_cache=not args.no_cache)
 
     if args.all or args.step == "fetch":
         if args.index_file:

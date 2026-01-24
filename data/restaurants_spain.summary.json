@@ -1,0 +1,74 @@
+{
+  "total_restaurants": 1846,
+  "by_platform": {
+    "Just Eat": 293,
+    "Glovo": 676,
+    "Uber Eats": 877
+  },
+  "by_city": {
+    "": 5,
+    "A Coruna": 46,
+    "Alcala De Henares": 149,
+    "Albacete": 95,
+    "Vitoria": 3,
+    "Pulianas": 160,
+    "Barcelona": 1,
+    "Algeciras": 23,
+    "La Zubia": 160,
+    "Nerja": 82,
+    "Guadalajara": 70,
+    "Chipiona": 160,
+    "Vitoriagasteiz": 76,
+    "Alicante": 445,
+    "Santjoand%27Alacant": 20,
+    "Crevillente": 2,
+    "Santjoand'Alacant": 70,
+    "Vitoria Gasteiz": 20,
+    "Villena": 8,
+    "Sanfulgencio": 8,
+    "Castalla": 3,
+    "Zarautz": 80,
+    "San Juan De Aznalfarache": 80,
+    "Tomares": 80
+  },
+  "by_date": {
+    "": 462,
+    "2023-06-": 1079,
+    "2023-05-": 305
+  },
+  "by_platform_city": {
+    "Just Eat": {
+      "": 5,
+      "Vitoriagasteiz": 76,
+      "Alicante": 80,
+      "Santjoand%27Alacant": 20,
+      "Crevillente": 2,
+      "Santjoand'Alacant": 70,
+      "Vitoria Gasteiz": 20,
+      "Villena": 8,
+      "Sanfulgencio": 8,
+      "Albacete": 1,
+      "Castalla": 3
+    },
+    "Glovo": {
+      "A Coruna": 46,
+      "Alcala De Henares": 149,
+      "Albacete": 94,
+      "Alicante": 365,
+      "Algeciras": 22
+    },
+    "Uber Eats": {
+      "Vitoria": 3,
+      "Pulianas": 160,
+      "Barcelona": 1,
+      "Algeciras": 1,
+      "La Zubia": 160,
+      "Nerja": 82,
+      "Guadalajara": 70,
+      "Chipiona": 160,
+      "Zarautz": 80,
+      "San Juan De Aznalfarache": 80,
+      "Tomares": 80
+    }
+  }
+}

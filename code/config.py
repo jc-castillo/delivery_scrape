@@ -94,6 +94,7 @@ PLATFORMS = {
         "url_path_pattern": "/es/es/%",  # Spanish pages
         # Restaurant listing patterns - these list restaurants in a city
         "listing_patterns": [
+            r"glovoapp\.com/es/es/[^/]+/restaurantes.*", # City restaurant listings (restaurantes_1, etc)
             r"glovoapp\.com/es/es/[^/]+/restaurants.*",  # City restaurant listings
             r"glovoapp\.com/es/es/[^/]+/category/.*",    # Category pages
         ],
@@ -106,15 +107,14 @@ PLATFORMS = {
         "name": "Uber Eats",
         "domain": "ubereats.com",
         "host": "www.ubereats.com",
-        "url_path_pattern": "/es%",  # Spanish pages (includes /es/ and /es-ES/)
+        "url_path_pattern": "/es%",  # Spanish pages (includes /es/, /es-en/, /es-ES/)
         "listing_patterns": [
-            r"ubereats\.com/es/city/[^/]+$",             # City main page
-            r"ubereats\.com/es/city/[^/]+/.*",           # City category pages
-            r"ubereats\.com/es-ES/city/[^/]+.*",         # Alternative ES format
+            r"ubereats\.com/es[^/]*/city/[^/]+$",        # City main page (es, es-en, es-ES)
+            r"ubereats\.com/es[^/]*/city/[^/]+/.*",      # City category pages
+            r"ubereats\.com/es[^/]*/brand-city/.*",      # Brand-city pages (have restaurant lists)
         ],
         "restaurant_patterns": [
-            r"ubereats\.com/es/store/.*",                # Store pages
-            r"ubereats\.com/es-ES/store/.*",             # Alternative format
+            r"ubereats\.com/es[^/]*/store/.*",           # Store pages
         ],
     },
     "justeat": {
@@ -123,13 +123,10 @@ PLATFORMS = {
         "host": "www.just-eat.es",
         "url_path_pattern": "/%",  # All pages (domain is already Spain-specific)
         "listing_patterns": [
-            r"just-eat\.es/[^/]+$",                      # City pages (e.g., /madrid)
-            r"just-eat\.es/area/.*",                     # Area pages
-            r"justeat\.es/[^/]+$",
+            r"just-eat\.es/area/\d+-[\w-]+",             # Area pages (e.g., /area/28006-madrid)
         ],
         "restaurant_patterns": [
-            r"just-eat\.es/restaurants-.*",              # Restaurant pages
-            r"justeat\.es/restaurants-.*",
+            r"just-eat\.es/restaurants-[^?]+",           # Restaurant pages (individual)
         ],
     },
 }
