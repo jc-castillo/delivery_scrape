@@ -1,7 +1,3 @@
-{
-  "url": "https://glovoapp.com/es/es/a-coruna/apodemia-a-coruna/?content=best-sellers-sc.227523444%2Fcharms-c.1250110034",
-  "crawl_id": "CC-MAIN-2023-23",
-  "platform": "glovo",
-  "warc_filename": "crawl-data/CC-MAIN-2023-23/segments/1685224646350.59/warc/CC-MAIN-20230610200654-20230610230654-00385.warc.gz",
-  "fetch_time": "2023-06-10 22:51:34.000"
-}
+version https://git-lfs.github.com/spec/v1
+oid sha256:7c8d6d653c08e0d9f7735bb7562e23c09449f1c520b3bed393b5296ba1179a13
+size 356

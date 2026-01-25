@@ -1,7 +1,3 @@
-{
-  "url": "https://www.ubereats.com/es-en/city/nerja-es-an",
-  "crawl_id": "CC-MAIN-2023-23",
-  "platform": "ubereats",
-  "warc_filename": "crawl-data/CC-MAIN-2023-23/segments/1685224650620.66/warc/CC-MAIN-20230605021141-20230605051141-00436.warc.gz",
-  "fetch_time": "2023-06-05 02:36:20.000"
-}
+version https://git-lfs.github.com/spec/v1
+oid sha256:e2b309076e727890707f106289d7db688f105799f90d4a0ef5552795626deef2
+size 296

@@ -1,7 +1,3 @@
-{
-  "url": "https://www.just-eat.es/restaurants-100-montaditos-atienza-alcala-de-henares/menu",
-  "crawl_id": "CC-MAIN-2023-23",
-  "platform": "justeat",
-  "warc_filename": "crawl-data/CC-MAIN-2023-23/segments/1685224649302.35/warc/CC-MAIN-20230603165228-20230603195228-00625.warc.gz",
-  "fetch_time": "2023-06-03 17:10:37.000"
-}
+version https://git-lfs.github.com/spec/v1
+oid sha256:19e05c15eea10c0974b72e990623cfbdd66a932681a98ce3514dd65758b249c1
+size 329

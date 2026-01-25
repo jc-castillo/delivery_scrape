@@ -1,7 +1,3 @@
-{
-  "url": "https://www.ubereats.com/es-en/city/la-zubia-es-an",
-  "crawl_id": "CC-MAIN-2023-23",
-  "platform": "ubereats",
-  "warc_filename": "crawl-data/CC-MAIN-2023-23/segments/1685224653608.76/warc/CC-MAIN-20230607042751-20230607072751-00483.warc.gz",
-  "fetch_time": "2023-06-07 05:08:08.000"
-}
+version https://git-lfs.github.com/spec/v1
+oid sha256:abf7c5e22447732302181d2151eb39744e67480194e7ed5db3d4a88e105e61bc
+size 299

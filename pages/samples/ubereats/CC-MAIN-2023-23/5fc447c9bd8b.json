@@ -1,7 +1,3 @@
-{
-  "url": "https://www.ubereats.com/es-en/store/amore-griego/Dsz0zdSNUgm9TMyVUg2mug",
-  "crawl_id": "CC-MAIN-2023-23",
-  "platform": "ubereats",
-  "warc_filename": "crawl-data/CC-MAIN-2023-23/segments/1685224648322.84/warc/CC-MAIN-20230602040003-20230602070003-00273.warc.gz",
-  "fetch_time": "2023-06-02 04:45:23.000"
-}
+version https://git-lfs.github.com/spec/v1
+oid sha256:509451d7d29b8d63f8ac5ecc143da774fc13b2d01be6fb35559f28fc6980732b
+size 321

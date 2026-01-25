@@ -1,7 +1,3 @@
-{
-  "url": "https://www.ubereats.com/es-en/city/pulianas-es-an",
-  "crawl_id": "CC-MAIN-2023-23",
-  "platform": "ubereats",
-  "warc_filename": "crawl-data/CC-MAIN-2023-23/segments/1685224654016.91/warc/CC-MAIN-20230607211505-20230608001505-00029.warc.gz",
-  "fetch_time": "2023-06-07 22:47:19.000"
-}
+version https://git-lfs.github.com/spec/v1
+oid sha256:b7589806ff3b4330c22b3e905cb89327726bc9f1c7cdb0fd9a715d269f79ac47
+size 299
