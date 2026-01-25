@@ -2,17 +2,23 @@
 Extract restaurant data from downloaded HTML pages.
 
 This module processes HTML files and extracts structured restaurant data,
-outputting to a consolidated CSV file.
+outputting to a consolidated CSV file and per-crawl/per-platform parquet files.
 """
 import csv
 import json
 import logging
 from pathlib import Path
 from typing import Iterator
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import pandas as pd
 
 from config import PAGES_DIR, DATA_DIR, OUTPUT_CSV
 from extractors import get_extractor, Restaurant
+
+# Output directory for per-crawl/per-platform files
+RESTAURANTS_DIR = DATA_DIR / "restaurants"
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -171,6 +177,67 @@ def save_to_csv(restaurants: list[Restaurant], output_path: Path = OUTPUT_CSV):
     logger.info(f"Saved {len(restaurants)} restaurants to {output_path}")
 
 
+def save_per_crawl_platform(restaurants: list[Restaurant],
+                            output_dir: Path = RESTAURANTS_DIR):
+    """
+    Save restaurants to separate files per crawl and platform.
+
+    Creates both CSV and Parquet files in the format:
+    {output_dir}/{crawl_id}_{platform}.csv
+    {output_dir}/{crawl_id}_{platform}.parquet
+
+    Args:
+        restaurants: List of Restaurant objects
+        output_dir: Directory to save files
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Group restaurants by crawl_id and platform
+    grouped = defaultdict(list)
+    for rest in restaurants:
+        key = (rest.crawl_id or "unknown", rest.platform or "unknown")
+        grouped[key].append(rest)
+
+    logger.info(f"Saving {len(grouped)} crawl/platform combinations to {output_dir}")
+
+    for (crawl_id, platform), rests in grouped.items():
+        # Convert to list of dicts
+        rows = []
+        for rest in rests:
+            row = rest.to_dict()
+            # Convert list fields to strings for CSV compatibility
+            if isinstance(row.get('categories'), list):
+                row['categories'] = '|'.join(row['categories'])
+            rows.append(row)
+
+        # Create DataFrame
+        df = pd.DataFrame(rows)
+
+        # Ensure string columns have consistent types (convert any lists to strings)
+        string_columns = ['name', 'platform', 'city', 'date', 'address', 'neighborhood',
+                         'food_type', 'categories', 'price_range', 'delivery_fee',
+                         'delivery_time', 'min_order', 'restaurant_url', 'image_url',
+                         'source_url', 'crawl_id']
+        for col in string_columns:
+            if col in df.columns:
+                df[col] = df[col].apply(lambda x: str(x) if isinstance(x, list) else x)
+                df[col] = df[col].astype('string')
+
+        # Generate filename (sanitize crawl_id)
+        safe_crawl_id = crawl_id.replace('/', '-')
+        base_name = f"{safe_crawl_id}_{platform}"
+
+        # Save as CSV
+        csv_path = output_dir / f"{base_name}.csv"
+        df.to_csv(csv_path, index=False, encoding='utf-8')
+
+        # Save as Parquet
+        parquet_path = output_dir / f"{base_name}.parquet"
+        df.to_parquet(parquet_path, index=False, engine='pyarrow')
+
+        logger.info(f"  Saved {len(rests)} restaurants to {base_name}.csv and .parquet")
+
+
 def generate_summary(restaurants: list[Restaurant]) -> dict:
     """Generate summary statistics from extracted data."""
     from collections import defaultdict
@@ -246,8 +313,11 @@ def main():
     if not args.no_dedup:
         restaurants = deduplicate_restaurants(restaurants)
 
-    # Save to CSV
+    # Save to CSV (consolidated)
     save_to_csv(restaurants, output_path)
+
+    # Save per crawl/platform files (CSV + Parquet)
+    save_per_crawl_platform(restaurants)
 
     # Generate and save summary
     summary = generate_summary(restaurants)

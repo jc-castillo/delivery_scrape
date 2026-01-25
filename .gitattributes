@@ -1,3 +1,6 @@
 *.html filter=lfs diff=lfs merge=lfs -text
 data/index_cache/*.json filter=lfs diff=lfs merge=lfs -text
 pages/**/*.html filter=lfs diff=lfs merge=lfs -text
+*.csv filter=lfs diff=lfs merge=lfs -text
+*.parquet filter=lfs diff=lfs merge=lfs -text
+*.json filter=lfs diff=lfs merge=lfs -text

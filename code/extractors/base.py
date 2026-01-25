@@ -79,12 +79,25 @@ class BaseExtractor(ABC):
 
     def _parse_date(self, timestamp: str) -> str:
         """Convert Common Crawl timestamp to date string."""
+        if not timestamp:
+            return ""
+
+        # Try ISO format first: 2023-06-01T08:32:22
+        if 'T' in timestamp or '-' in timestamp:
+            try:
+                # Handle ISO format with or without T
+                date_part = timestamp.split('T')[0] if 'T' in timestamp else timestamp[:10]
+                dt = datetime.strptime(date_part, "%Y-%m-%d")
+                return dt.strftime("%Y-%m-%d")
+            except ValueError:
+                pass
+
         # CC timestamp format: YYYYMMDDhhmmss
         try:
             dt = datetime.strptime(timestamp[:8], "%Y%m%d")
             return dt.strftime("%Y-%m-%d")
         except ValueError:
-            return timestamp[:8]
+            return timestamp[:10] if len(timestamp) >= 10 else timestamp
 
     def _get_soup(self, html: str) -> BeautifulSoup:
         """Parse HTML with BeautifulSoup."""
