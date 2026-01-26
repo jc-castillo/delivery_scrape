@@ -85,6 +85,13 @@ CC_INDEXES = [
     "CC-MAIN-2025-03", "CC-MAIN-2025-08", "CC-MAIN-2025-13",
 ]
 
+# Test crawls for full download (one per year)
+TEST_CRAWLS = [
+    "CC-MAIN-2022-05",  # January 2022
+    "CC-MAIN-2023-40",  # October 2023
+    "CC-MAIN-2024-51",  # December 2024
+]
+
 # Target platforms and their Athena query configurations
 PLATFORMS = {
     "glovo": {
@@ -94,13 +101,17 @@ PLATFORMS = {
         "url_path_pattern": "/es/es/%",  # Spanish pages
         # Restaurant listing patterns - these list restaurants in a city
         "listing_patterns": [
-            r"glovoapp\.com/es/es/[^/]+/restaurantes.*", # City restaurant listings (restaurantes_1, etc)
-            r"glovoapp\.com/es/es/[^/]+/restaurants.*",  # City restaurant listings
-            r"glovoapp\.com/es/es/[^/]+/category/.*",    # Category pages
+            r"glovoapp\.com/es/es/[^/]+/restaurantes.*",   # City restaurant listings (restaurantes_1, etc)
+            r"glovoapp\.com/es/es/[^/]+/restaurants.*",    # City restaurant listings
+            r"glovoapp\.com/es/es/[^/]+/category/.*",      # Category pages
+            r"glovoapp\.com/es/es/[^/]+/comida_\d+/?$",    # Food listings (comida_1/)
+            r"glovoapp\.com/es/es/[^/]+/comida_\d+/[^/]+/?$",  # Food subcategories (comida_1/pizza_34701/)
+            r"glovoapp\.com/es/es/[^/]+/supermercados.*",  # Supermarket listings
         ],
         # Individual restaurant patterns
         "restaurant_patterns": [
             r"glovoapp\.com/es/es/[^/]+/store/.*",       # Individual stores
+            r"glovoapp\.com/es/es/[^/]+/[^/]+-[a-z]{3}/$",  # Individual stores with city suffix
         ],
     },
     "ubereats": {

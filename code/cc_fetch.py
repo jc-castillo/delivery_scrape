@@ -194,10 +194,62 @@ class CommonCrawlFetcher:
 
         return results
 
+    def _url_to_path(self, url: str) -> str:
+        """
+        Convert URL to a filesystem-safe path structure.
+
+        Example: https://www.just-eat.es/area/28006-madrid
+              -> area/28006-madrid.html
+
+        Args:
+            url: Full URL
+
+        Returns:
+            Relative path suitable for filesystem
+        """
+        from urllib.parse import urlparse, unquote
+
+        parsed = urlparse(url)
+        # Get path and remove leading slash
+        path = unquote(parsed.path).lstrip('/')
+
+        # Remove any query string from the path
+        if '?' in path:
+            path = path.split('?')[0]
+
+        # Handle empty path
+        if not path:
+            path = 'index'
+
+        # Clean up path components to be filesystem-safe
+        # Replace problematic characters but preserve structure
+        safe_chars = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_./áéíóúñüÁÉÍÓÚÑÜàèìòùâêîôûäëïöüçÀÈÌÒÙÂÊÎÔÛÄËÏÖÜÇ')
+
+        cleaned_parts = []
+        for part in path.split('/'):
+            # Replace unsafe characters with underscore
+            cleaned = ''.join(c if c in safe_chars else '_' for c in part)
+            # Collapse multiple underscores
+            while '__' in cleaned:
+                cleaned = cleaned.replace('__', '_')
+            # Remove leading/trailing underscores
+            cleaned = cleaned.strip('_')
+            if cleaned:
+                cleaned_parts.append(cleaned)
+
+        if not cleaned_parts:
+            return 'index'
+
+        return '/'.join(cleaned_parts)
+
     def save_html(self, warc_record: WARCRecord,
                   output_dir: Optional[Path] = None) -> Path:
         """
-        Save HTML content to disk.
+        Save HTML content to disk using URL-based folder structure.
+
+        Structure: {output_dir}/{platform}/{crawl_id}/{url_path}.html
+
+        Example: pages/justeat/CC-MAIN-2022-05/area/28006-madrid.html
 
         Args:
             warc_record: WARC record with content
@@ -209,21 +261,34 @@ class CommonCrawlFetcher:
         if output_dir is None:
             output_dir = PAGES_DIR
 
-        # Create subdirectory structure: platform/crawl_id/
-        save_dir = output_dir / warc_record.platform / warc_record.crawl_id
-        save_dir.mkdir(parents=True, exist_ok=True)
+        # Convert URL to path structure
+        url_path = self._url_to_path(warc_record.url)
 
-        # Create filename from URL hash + timestamp
-        url_hash = hashlib.md5(warc_record.url.encode()).hexdigest()[:12]
-        filename = f"{warc_record.timestamp}_{url_hash}.html"
+        # Create full path: platform/crawl_id/url_path.html
+        relative_path = Path(warc_record.platform) / warc_record.crawl_id / url_path
 
-        filepath = save_dir / filename
+        # Add .html extension if not present
+        if not str(relative_path).endswith('.html'):
+            relative_path = Path(str(relative_path) + '.html')
+
+        filepath = output_dir / relative_path
+
+        # Ensure parent directory exists
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+
+        # Handle filename collisions (same URL crawled multiple times)
+        # by adding timestamp suffix if file exists
+        if filepath.exists():
+            stem = filepath.stem
+            suffix = filepath.suffix
+            timestamp_suffix = warc_record.timestamp.replace(':', '-').replace('T', '_')
+            filepath = filepath.parent / f"{stem}_{timestamp_suffix}{suffix}"
 
         # Save HTML content
         with open(filepath, 'wb') as f:
             f.write(warc_record.content)
 
-        # Save metadata
+        # Save metadata alongside HTML
         meta_filepath = filepath.with_suffix('.json')
         with open(meta_filepath, 'w') as f:
             json.dump({

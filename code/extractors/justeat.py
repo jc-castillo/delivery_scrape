@@ -360,9 +360,15 @@ class JustEatExtractor(BaseExtractor):
         restaurants = []
         seen_names = set()
 
-        # Just Eat card selectors - multiple patterns based on page type
+        # Just Eat card selectors - multiple patterns based on page type/year
         card_selectors = [
-            # Area/listing pages - cards with restaurant-id
+            # 2024+ structure - uses data-qa attributes
+            'div[data-qa="restaurant-card"]',
+            '[data-qa^="restaurant-card-"]',  # Cards with restaurant-specific IDs
+            # 2022-2023 structure - section elements with data-restaurant-id
+            'section[data-restaurant-id]',
+            '[data-test-id="restaurant"]',
+            # Legacy selectors for older page structures
             'a[data-restaurant-id]',
             '[class*="RestaurantCard_c-restaurantCard_"]',
             # Other patterns
@@ -392,6 +398,10 @@ class JustEatExtractor(BaseExtractor):
         # Find restaurant name - try multiple patterns
         name = None
         name_selectors = [
+            # 2024+ structure
+            '[data-qa="restaurant-name"]',
+            '[class*="restaurant-name"]',
+            # 2022-2023 structure
             '[data-test-id="restaurant_name"]',
             '[data-test-id="restaurant-name"]',
             '[class*="restaurantCard-name"]',
@@ -416,6 +426,8 @@ class JustEatExtractor(BaseExtractor):
         # Extract rating
         rating = None
         rating_elem = card.select_one(
+            '[data-qa="rating"], '
+            '[data-qa="restaurant-rating"], '
             '[data-test-id="rating"], '
             '[class*="rating"], '
             '[class*="RatingLabel"]'
@@ -443,10 +455,21 @@ class JustEatExtractor(BaseExtractor):
 
         # Extract cuisines
         categories = []
-        cuisine_elem = card.select_one('[data-test-id="cuisines"], [class*="cuisine"]')
+        cuisine_elem = card.select_one('[data-qa="restaurant-tags"], [data-test-id="restaurant-cuisines"], [data-test-id="cuisines"], [class*="cuisine"]')
         if cuisine_elem:
-            text = cuisine_elem.get_text()
-            categories = [c.strip() for c in text.split(',') if c.strip()]
+            # Get text content, filtering out empty spans
+            text_parts = []
+            for child in cuisine_elem.children:
+                if hasattr(child, 'name') and child.name == 'span':
+                    continue  # Skip icon spans
+                text = child.get_text().strip() if hasattr(child, 'get_text') else str(child).strip()
+                if text:
+                    text_parts.append(text)
+            # Also try comma-split fallback
+            if not text_parts:
+                text = cuisine_elem.get_text()
+                text_parts = [c.strip() for c in text.split(',') if c.strip()]
+            categories = text_parts
 
         # Extract address
         address = None
@@ -468,7 +491,7 @@ class JustEatExtractor(BaseExtractor):
 
         # Extract image URL
         image_url = None
-        img = card.select_one('img[data-test-id="restaurant_logo"], img[src]')
+        img = card.select_one('img[data-qa="restaurant-logo"], img[data-test-id="restaurant_logo"], img[src]')
         if img:
             image_url = img.get('src')
 
