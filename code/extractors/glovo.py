@@ -44,9 +44,9 @@ class GlovoExtractor(BaseExtractor):
     def _extract_city_from_url(self, url: str) -> Optional[str]:
         """
         Extract city from Glovo URL.
-        Format: glovoapp.com/es/es/{city}/...
+        Format: glovoapp.com/es/{lang}/{city}/...
         """
-        match = re.search(r'glovoapp\.com/es/es/([^/]+)', url)
+        match = re.search(r'glovoapp\.com/es/[^/]+/([^/]+)', url)
         if match:
             city = match.group(1)
             # Clean city name - remove restaurantes suffix, trailing numbers

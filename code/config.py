@@ -98,20 +98,20 @@ PLATFORMS = {
         "name": "Glovo",
         "domain": "glovoapp.com",
         "host": "glovoapp.com",
-        "url_path_pattern": "/es/es/%",  # Spanish pages
+        "url_path_pattern": "/es/%",  # Spain (all UI languages: /es/es/, /es/en/, /es/ca/, etc.)
         # Restaurant listing patterns - these list restaurants in a city
         "listing_patterns": [
-            r"glovoapp\.com/es/es/[^/]+/restaurantes.*",   # City restaurant listings (restaurantes_1, etc)
-            r"glovoapp\.com/es/es/[^/]+/restaurants.*",    # City restaurant listings
-            r"glovoapp\.com/es/es/[^/]+/category/.*",      # Category pages
-            r"glovoapp\.com/es/es/[^/]+/comida_\d+/?$",    # Food listings (comida_1/)
-            r"glovoapp\.com/es/es/[^/]+/comida_\d+/[^/]+/?$",  # Food subcategories (comida_1/pizza_34701/)
-            r"glovoapp\.com/es/es/[^/]+/supermercados.*",  # Supermarket listings
+            r"glovoapp\.com/es/[^/]+/[^/]+/restaurantes.*",   # City restaurant listings (restaurantes_1, etc)
+            r"glovoapp\.com/es/[^/]+/[^/]+/restaurants.*",    # City restaurant listings
+            r"glovoapp\.com/es/[^/]+/[^/]+/category/.*",      # Category pages
+            r"glovoapp\.com/es/[^/]+/[^/]+/comida_\d+/?$",    # Food listings (comida_1/)
+            r"glovoapp\.com/es/[^/]+/[^/]+/comida_\d+/[^/]+/?$",  # Food subcategories (comida_1/pizza_34701/)
+            r"glovoapp\.com/es/[^/]+/[^/]+/supermercados.*",  # Supermarket listings
         ],
         # Individual restaurant patterns
         "restaurant_patterns": [
-            r"glovoapp\.com/es/es/[^/]+/store/.*",       # Individual stores
-            r"glovoapp\.com/es/es/[^/]+/[^/]+-[a-z]{3}/$",  # Individual stores with city suffix
+            r"glovoapp\.com/es/[^/]+/[^/]+/store/.*",       # Individual stores
+            r"glovoapp\.com/es/[^/]+/[^/]+/[^/]+-[a-z]{3}/$",  # Individual stores with city suffix
         ],
     },
     "ubereats": {
