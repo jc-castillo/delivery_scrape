@@ -34,7 +34,7 @@ from config import (
 )
 from cc_athena import AthenaIndexQuery
 from cc_fetch import CommonCrawlFetcher, filter_listing_urls
-from extract_data import extract_all, deduplicate_restaurants, save_to_csv, generate_summary
+from extract_data import extract_all, deduplicate_restaurants, save_to_csv, save_per_crawl_platform, generate_summary
 
 logging.basicConfig(
     level=logging.INFO,
@@ -200,8 +200,11 @@ def run_extract_step(pages_dir: Path = PAGES_DIR,
     # Deduplicate
     restaurants = deduplicate_restaurants(restaurants)
 
-    # Save to CSV
+    # Save to CSV (combined file)
     save_to_csv(restaurants, output_path)
+
+    # Save per-crawl/platform files (CSV + Parquet)
+    save_per_crawl_platform(restaurants)
 
     # Generate and save summary
     summary = generate_summary(restaurants)
@@ -216,11 +219,31 @@ def run_extract_step(pages_dir: Path = PAGES_DIR,
     print(f"Total restaurants: {summary['total_restaurants']}")
     print("\nBy platform:")
     for platform, count in sorted(summary['by_platform'].items()):
-        print(f"  {platform}: {count}")
+        print(f"  {platform}: {count:,}")
+
+    # Calculate by-crawl stats
+    from collections import defaultdict
+    by_crawl = defaultdict(lambda: defaultdict(int))
+    for rest in restaurants:
+        by_crawl[rest.crawl_id][rest.platform] += 1
+
+    print("\nBy crawl and platform:")
+    print(f"  {'Crawl':<20} {'Glovo':>10} {'Just Eat':>10} {'Uber Eats':>10} {'Total':>10}")
+    print(f"  {'-'*60}")
+    for crawl_id in sorted(by_crawl.keys()):
+        platforms = by_crawl[crawl_id]
+        total = sum(platforms.values())
+        print(f"  {crawl_id:<20} {platforms.get('Glovo', 0):>10,} {platforms.get('Just Eat', 0):>10,} {platforms.get('Uber Eats', 0):>10,} {total:>10,}")
+
     print("\nTop 10 cities:")
     sorted_cities = sorted(summary['by_city'].items(), key=lambda x: -x[1])[:10]
     for city, count in sorted_cities:
-        print(f"  {city}: {count}")
+        print(f"  {city}: {count:,}")
+
+    print(f"\nOutput files:")
+    print(f"  Combined CSV: {output_path}")
+    print(f"  Per-crawl files: data/restaurants/")
+    print(f"  Summary JSON: {summary_path}")
 
     return len(restaurants)
 

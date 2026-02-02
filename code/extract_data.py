@@ -245,21 +245,29 @@ def generate_summary(restaurants: list[Restaurant]) -> dict:
     summary = {
         'total_restaurants': len(restaurants),
         'by_platform': defaultdict(int),
+        'by_crawl': defaultdict(int),
         'by_city': defaultdict(int),
         'by_date': defaultdict(int),
+        'by_crawl_platform': defaultdict(lambda: defaultdict(int)),
         'by_platform_city': defaultdict(lambda: defaultdict(int)),
     }
 
     for rest in restaurants:
         summary['by_platform'][rest.platform] += 1
+        summary['by_crawl'][rest.crawl_id] += 1
         summary['by_city'][rest.city] += 1
         summary['by_date'][rest.date] += 1
+        summary['by_crawl_platform'][rest.crawl_id][rest.platform] += 1
         summary['by_platform_city'][rest.platform][rest.city] += 1
 
     # Convert defaultdicts to regular dicts for JSON serialization
     summary['by_platform'] = dict(summary['by_platform'])
+    summary['by_crawl'] = dict(summary['by_crawl'])
     summary['by_city'] = dict(summary['by_city'])
     summary['by_date'] = dict(summary['by_date'])
+    summary['by_crawl_platform'] = {
+        k: dict(v) for k, v in summary['by_crawl_platform'].items()
+    }
     summary['by_platform_city'] = {
         k: dict(v) for k, v in summary['by_platform_city'].items()
     }

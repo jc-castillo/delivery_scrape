@@ -2,37 +2,30 @@
 
 Extract historical restaurant data from Glovo, Uber Eats, and Just Eat in Spain using Common Crawl archives (2022-present).
 
-## Overview
+## Current Data Summary
 
-This project extracts restaurant listings from Common Crawl snapshots of food delivery platforms, creating a dataset of restaurants available at different points in time.
+**180,111 restaurants** extracted across 3 crawls, 3 platforms, and 1,376 cities.
 
-**Output**: A CSV with columns:
-- `date` - Snapshot date (YYYY-MM-DD)
-- `city` - Spanish city
-- `name` - Restaurant name
-- `platform` - Glovo, Uber Eats, or Just Eat
-- `address` - Street address (when available)
-- `neighborhood` - Neighborhood/area
-- `food_type` - Primary cuisine type
-- `categories` - All cuisine categories
-- `rating` - Restaurant rating
-- `num_ratings` - Number of ratings
-- `price_range` - Price category (€, €€, €€€)
-- `delivery_fee` - Delivery cost
-- `delivery_time` - Estimated delivery time
-- And more...
+| Crawl | Glovo | Just Eat | Uber Eats | Total |
+|-------|-------|----------|-----------|-------|
+| CC-MAIN-2022-05 | 28,697 | 5,880 | 6,477 | 41,054 |
+| CC-MAIN-2023-40 | 41,011 | 10,180 | 5,479 | 56,670 |
+| CC-MAIN-2024-51 | 47,639 | 24,790 | 9,958 | 82,387 |
+| **Total** | **117,347** | **40,850** | **21,914** | **180,111** |
 
 ## Quick Start
 
 ### 1. Install Dependencies
 
 ```bash
+python -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Set Up AWS (Recommended)
+### 2. Set Up AWS
 
-See [AWS_SETUP.md](AWS_SETUP.md) for detailed instructions. In brief:
+AWS credentials are required for Athena queries and faster S3 access:
 
 ```bash
 export AWS_ACCESS_KEY_ID="your-key"
@@ -40,151 +33,208 @@ export AWS_SECRET_ACCESS_KEY="your-secret"
 export AWS_REGION="us-east-1"
 ```
 
-### 3. Run the Pipeline
+See [AWS_SETUP.md](AWS_SETUP.md) for detailed instructions.
+
+### 3. Run the Pipeline for a New Crawl
 
 ```bash
 cd code
 
-# Full pipeline (all crawls, all platforms)
+# Process a single crawl (recommended for testing)
+python run_pipeline.py --all --crawl CC-MAIN-2025-08
+
+# Process multiple crawls
+python run_pipeline.py --all --crawl CC-MAIN-2025-08 --crawl CC-MAIN-2025-03
+
+# Process all crawls defined in config.py
+python run_pipeline.py --all
+```
+
+## Adding a New Crawl
+
+### Step 1: Find the Crawl ID
+
+Common Crawl IDs follow the format `CC-MAIN-YYYY-WW` where:
+- `YYYY` = year
+- `WW` = crawl number within the year
+
+Find available crawls at: https://commoncrawl.org/overview
+
+### Step 2: Run the Pipeline
+
+```bash
+cd code
+python run_pipeline.py --all --crawl CC-MAIN-2025-XX
+```
+
+This will:
+1. **Index** - Query Athena to find all platform URLs in that crawl (~2-5 min)
+2. **Fetch** - Download HTML pages from Common Crawl WARC files (~10-30 min depending on page count)
+3. **Extract** - Parse HTML and extract restaurant data (~5-10 min)
+
+### Step 3: Verify Results
+
+Check the output summary printed at the end, or view the files:
+
+```bash
+# View the summary
+cat data/restaurants_spain.summary.json | python -m json.tool
+
+# Count restaurants per platform
+cd data/restaurants
+ls -la *.csv
+```
+
+## Pipeline Commands
+
+### Full Pipeline
+
+```bash
+# Run all steps for specific crawl(s)
+python run_pipeline.py --all --crawl CC-MAIN-2025-08
+
+# Run all steps for all configured crawls
 python run_pipeline.py --all
 
-# Or test with a single crawl and limited pages
-python run_pipeline.py --all --crawl CC-MAIN-2024-51 --limit 100
+# Limit pages per platform (for testing)
+python run_pipeline.py --all --crawl CC-MAIN-2025-08 --limit 100
 ```
+
+### Individual Steps
+
+```bash
+# Step 1: Query Common Crawl index (find URLs)
+python run_pipeline.py --step index --crawl CC-MAIN-2025-08
+
+# Step 2: Fetch HTML pages from WARC files
+python run_pipeline.py --step fetch --crawl CC-MAIN-2025-08
+
+# Step 3: Extract restaurant data
+python run_pipeline.py --step extract
+```
+
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `--all` | Run all pipeline steps |
+| `--step {index,fetch,extract}` | Run a specific step |
+| `--crawl CC-MAIN-YYYY-WW` | Process specific crawl (can be repeated) |
+| `--limit N` | Limit pages per platform per crawl |
+| `--workers N` | Parallel workers for fetching (default: 10) |
+| `--no-cache` | Re-run Athena queries (ignore cached index results) |
+| `--all-pages` | Fetch all page types (not just listing pages) |
+| `--output PATH` | Custom output CSV path |
 
 ## Project Structure
 
 ```
 delivery_scrape/
 ├── code/
-│   ├── config.py           # Configuration and settings
-│   ├── cc_index.py         # Common Crawl index querying
-│   ├── cc_fetch.py         # WARC file fetching
-│   ├── extract_data.py     # Data extraction to CSV
-│   ├── analyze_pages.py    # Page structure analysis
 │   ├── run_pipeline.py     # Main orchestration script
-│   └── extractors/
-│       ├── __init__.py
+│   ├── config.py           # Configuration (platforms, crawl IDs)
+│   ├── cc_athena.py        # Athena index queries
+│   ├── cc_fetch.py         # WARC file fetching
+│   ├── extract_data.py     # Data extraction
+│   └── extractors/         # Platform-specific extractors
 │       ├── base.py         # Base extractor class
-│       ├── glovo.py        # Glovo-specific extraction
+│       ├── glovo.py        # Glovo extraction
 │       ├── ubereats.py     # Uber Eats extraction
 │       └── justeat.py      # Just Eat extraction
-├── data/                   # Output data and caches
-│   └── index_cache/        # Cached index results
+├── data/
+│   ├── index_cache/        # Cached Athena query results
+│   ├── restaurants/        # Per-crawl/platform CSV+Parquet files
+│   ├── restaurants_spain.csv           # Combined CSV
+│   └── restaurants_spain.summary.json  # Summary statistics
 ├── pages/                  # Downloaded HTML pages
-│   └── {platform}/{crawl}/ # Organized by platform and crawl
+│   └── {url-based-structure}/
 ├── requirements.txt
 ├── AWS_SETUP.md
 └── README.md
 ```
 
-## Step-by-Step Usage
+## Output Data
 
-### Step 1: Query the Common Crawl Index
+### Combined CSV: `data/restaurants_spain.csv`
 
-Find URLs for each platform:
+| Column | Description |
+|--------|-------------|
+| `name` | Restaurant name |
+| `platform` | Glovo, Just Eat, or Uber Eats |
+| `city` | Spanish city |
+| `date` | Snapshot date (YYYY-MM-DD) |
+| `address` | Street address (when available) |
+| `food_type` | Primary cuisine type |
+| `categories` | All cuisine categories (pipe-separated) |
+| `rating` | Restaurant rating (1-5 scale) |
+| `num_ratings` | Number of ratings |
+| `price_range` | Price category |
+| `delivery_fee` | Delivery cost |
+| `delivery_time` | Estimated delivery time |
+| `restaurant_url` | Link to restaurant page |
+| `source_url` | Original Common Crawl URL |
+| `crawl_id` | Common Crawl snapshot ID |
 
-```bash
-python run_pipeline.py --step index
+### Per-Crawl Files: `data/restaurants/{crawl_id}_{platform}.csv`
 
-# Or for a specific crawl
-python run_pipeline.py --step index --crawl CC-MAIN-2024-51
-```
+Same columns, split by crawl and platform for easier analysis.
 
-This creates `data/index_results.json` with all found URLs.
+## Platform Extraction Details
 
-### Step 2: Analyze Page Structure (Optional)
+### Glovo
+- **Domain**: glovoapp.com
+- **URL pattern**: `/es/{lang}/{city}/restaurantes...`
+- **Data sources**: HTML store cards, JSON-LD
 
-Understand what data is available:
+### Uber Eats
+- **Domain**: ubereats.com
+- **URL pattern**: `/es/city/{city}...`
+- **Data sources**: JSON-LD, React Query state
 
-```bash
-python analyze_pages.py --platform glovo --sample 10 --extract-test
-```
-
-### Step 3: Download HTML Pages
-
-Fetch pages from Common Crawl:
-
-```bash
-python run_pipeline.py --step fetch --limit 50  # 50 pages per platform per crawl
-
-# Or fetch all pages
-python run_pipeline.py --step fetch
-```
-
-Pages are saved to `pages/{platform}/{crawl_id}/`.
-
-### Step 4: Extract Restaurant Data
-
-Parse HTML and create CSV:
-
-```bash
-python run_pipeline.py --step extract
-```
-
-Output: `data/restaurants_spain.csv`
+### Just Eat
+- **Domain**: just-eat.es
+- **URL pattern**: `/area/{postal_code}-{city}`
+- **Data sources**: JSON-LD, HTML restaurant cards
 
 ## Configuration
 
 Edit `code/config.py` to customize:
 
-- **PLATFORMS**: Add or modify platform URL patterns
-- **SPANISH_CITIES**: Focus cities for extraction
-- **CC_INDEXES**: Which Common Crawl snapshots to process
-
-## Available Crawls
-
-The project includes indexes from 2022-2025:
-
-```
-CC-MAIN-2022-05, CC-MAIN-2022-21, CC-MAIN-2022-27, ...
-CC-MAIN-2023-06, CC-MAIN-2023-14, ...
-CC-MAIN-2024-10, CC-MAIN-2024-18, ...
-CC-MAIN-2025-03, CC-MAIN-2025-08, ...
-```
-
-Each crawl represents a snapshot of the web taken during that period.
-
-## Data Extraction Details
-
-### Glovo
-- URL pattern: `glovoapp.com/es/es/{city}/restaurants...`
-- Data sources: JSON-LD, embedded Next.js data, HTML cards
-
-### Uber Eats
-- URL pattern: `ubereats.com/es/city/{city}...`
-- Data sources: JSON-LD, React Query state, HTML structure
-
-### Just Eat
-- URL pattern: `just-eat.es/{city}` or `just-eat.es/area/{city}`
-- Data sources: JSON-LD, initial state, HTML cards
+- `PLATFORMS` - URL patterns for each platform
+- `CC_INDEXES` - List of all available crawl IDs
+- `TEST_CRAWLS` - Subset of crawls for testing
 
 ## Troubleshooting
 
-### No URLs found in index
-- Check that the crawl ID exists
-- Platform URL patterns may have changed; update `config.py`
+### "No URLs found in index"
+- Verify the crawl ID exists and is complete
+- Check Athena console for query errors
+- The crawl may not have captured the platform
 
-### Empty extractions
-- Pages may use client-side rendering not captured by Common Crawl
-- Run `analyze_pages.py` to understand page structure
-- Update extractors if page format has changed
+### "Empty extractions"
+- Some pages use client-side rendering not captured by Common Crawl
+- Page structure may have changed; check HTML manually
+- Run with `--limit 10` and inspect downloaded files
 
-### AWS connection issues
-- Verify credentials are set correctly
+### AWS/Athena errors
+- Verify credentials: `aws sts get-caller-identity`
 - Ensure region is `us-east-1`
-- See [AWS_SETUP.md](AWS_SETUP.md)
+- Check S3 bucket permissions for query output
+
+### Re-running a crawl
+- Delete cached index: `rm data/index_cache/{crawl_id}_*.json`
+- Delete downloaded pages: `rm -rf pages/*/{crawl_id}`
+- Re-run: `python run_pipeline.py --all --crawl {crawl_id} --no-cache`
 
 ## Performance Tips
 
-1. **Use AWS credentials** for faster, unrestricted access
-2. **Run in US-East** for minimal latency to S3
-3. **Process in parallel** using `--workers` flag
-4. **Cache index results** (automatic in `data/index_cache/`)
+1. **Run in US-East** - Minimal latency to Common Crawl S3
+2. **Use parallel workers** - `--workers 20` for faster fetching
+3. **Cache is your friend** - Index results are cached automatically
+4. **Start small** - Test with `--limit 50` before full runs
 
 ## License
 
 This project is for research and educational purposes. Please respect:
 - Common Crawl's terms of service
-- Robots.txt restrictions of original sites
 - Platform terms of service for data usage
