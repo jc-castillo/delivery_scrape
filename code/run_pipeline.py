@@ -111,7 +111,7 @@ def normalize_athena_record(record: dict) -> dict:
 
 
 def run_fetch_step(index_file: Path, limit: int = None,
-                  listings_only: bool = True, max_workers: int = 10) -> int:
+                  listings_only: bool = False, max_workers: int = 10) -> int:
     """
     Step 2: Download HTML from Common Crawl WARC files.
 
@@ -293,9 +293,9 @@ def main():
 
     # Fetch step options
     parser.add_argument(
-        "--all-pages",
+        "--listings-only",
         action="store_true",
-        help="Fetch all pages, not just listing pages"
+        help="Only fetch listing pages (default: fetch all pages)"
     )
     parser.add_argument(
         "--index-file", "-i",
@@ -332,7 +332,7 @@ def main():
         run_fetch_step(
             index_file,
             limit=args.limit,
-            listings_only=not args.all_pages,
+            listings_only=args.listings_only,
             max_workers=args.workers
         )
 
