@@ -29,15 +29,26 @@ class GlovoExtractor(BaseExtractor):
         date = self._parse_date(timestamp)
         city = self._extract_city_from_url(url)
 
-        # Primary method: Extract from HTML store cards (most reliable for Glovo)
-        html_restaurants = self._extract_from_html_cards(soup, url, date, city, crawl_id)
-        if html_restaurants:
-            restaurants.extend(html_restaurants)
+        # Check if this is an individual restaurant page (no store cards)
+        # For individual pages, JSON-LD is more reliable
+        cards = soup.select('[class*="store-card"]')
+        is_listing_page = len(cards) > 0
 
-        # Fallback: Try JSON-LD
-        if not restaurants:
+        if is_listing_page:
+            # Listing page: Extract from HTML store cards (most reliable)
+            html_restaurants = self._extract_from_html_cards(soup, url, date, city, crawl_id)
+            if html_restaurants:
+                restaurants.extend(html_restaurants)
+        else:
+            # Individual restaurant page: Try JSON-LD first (has correct restaurant name)
             json_restaurants = self._extract_from_json_ld(soup, url, date, city, crawl_id)
-            restaurants.extend(json_restaurants)
+            if json_restaurants:
+                restaurants.extend(json_restaurants)
+            else:
+                # Fallback to HTML extraction
+                html_restaurants = self._extract_from_html_cards(soup, url, date, city, crawl_id)
+                if html_restaurants:
+                    restaurants.extend(html_restaurants)
 
         return restaurants
 
@@ -231,11 +242,15 @@ class GlovoExtractor(BaseExtractor):
                 return None
             item_type = item.get('@type', '')
 
-        if item_type not in ['Restaurant', 'LocalBusiness', 'FoodEstablishment', 'Organization']:
+        if item_type not in ['Restaurant', 'LocalBusiness', 'FoodEstablishment', 'Store']:
             return None
 
         name = item.get('name')
         if not name:
+            return None
+
+        # Skip generic names like "Glovo"
+        if name.lower() in ['glovo', 'glovoapp']:
             return None
 
         # Extract address
@@ -256,13 +271,32 @@ class GlovoExtractor(BaseExtractor):
         num_ratings = None
         rating_obj = item.get('aggregateRating', {})
         if rating_obj:
-            rating = rating_obj.get('ratingValue')
+            rating_val = rating_obj.get('ratingValue')
+            # Handle percentage ratings (e.g., "95%")
+            if isinstance(rating_val, str) and '%' in rating_val:
+                try:
+                    rating = float(rating_val.replace('%', '').strip()) / 20.0  # Convert to 5-star scale
+                except ValueError:
+                    rating = None
+            elif rating_val:
+                try:
+                    rating = float(rating_val)
+                except (ValueError, TypeError):
+                    rating = None
             num_ratings = rating_obj.get('ratingCount') or rating_obj.get('reviewCount')
 
         # Extract cuisine
         cuisine = item.get('servesCuisine', [])
         if isinstance(cuisine, str):
             cuisine = [cuisine]
+
+        # Parse num_ratings safely
+        parsed_num_ratings = None
+        if num_ratings:
+            try:
+                parsed_num_ratings = int(str(num_ratings).replace(',', ''))
+            except (ValueError, TypeError):
+                parsed_num_ratings = None
 
         return Restaurant(
             name=self._clean_text(name),
@@ -272,8 +306,8 @@ class GlovoExtractor(BaseExtractor):
             address=self._clean_text(address),
             food_type=cuisine[0] if cuisine else None,
             categories=cuisine,
-            rating=float(rating) if rating else None,
-            num_ratings=int(num_ratings) if num_ratings else None,
+            rating=round(rating, 2) if rating else None,
+            num_ratings=parsed_num_ratings,
             price_range=item.get('priceRange'),
             restaurant_url=item.get('url'),
             image_url=item.get('image'),
