@@ -136,13 +136,16 @@ def deduplicate_restaurants(restaurants: list[Restaurant]) -> list[Restaurant]:
     """
     Remove duplicate restaurant entries.
 
-    Duplicates are identified by: name + platform + city + date
+    Duplicates are identified by: name + platform + city + crawl_id.
+    Uses crawl_id (not date) because pages within the same crawl are archived
+    on different days, and the same restaurant can appear on multiple listing
+    pages with different timestamps.
     """
     seen = set()
     unique = []
 
     for rest in restaurants:
-        key = (rest.name.lower(), rest.platform, rest.city.lower(), rest.date)
+        key = (rest.name.lower(), rest.platform, rest.city.lower(), rest.crawl_id)
         if key not in seen:
             seen.add(key)
             unique.append(rest)
