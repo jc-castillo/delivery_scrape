@@ -42,7 +42,9 @@ Thumbs.db
 
 # Large data files (can be re-downloaded)
 pages/
+logs/
 
 # Secrets (never commit these!)
 accessKeys.csv
 credentials.csv
+.env

@@ -136,19 +136,34 @@ def deduplicate_restaurants(restaurants: list[Restaurant]) -> list[Restaurant]:
     """
     Remove duplicate restaurant entries.
 
-    Duplicates are identified by: name + platform + city + crawl_id.
+    Uses two dedup strategies:
+    - Primary: (restaurant_url, crawl_id) when URL is available
+    - Fallback: (name, platform, city, crawl_id) for rows without URL
+
     Uses crawl_id (not date) because pages within the same crawl are archived
     on different days, and the same restaurant can appear on multiple listing
     pages with different timestamps.
     """
-    seen = set()
+    seen_urls = set()
+    seen_names = set()
     unique = []
 
     for rest in restaurants:
-        key = (rest.name.lower(), rest.platform, rest.city.lower(), rest.crawl_id)
-        if key not in seen:
-            seen.add(key)
-            unique.append(rest)
+        if rest.restaurant_url:
+            key = (rest.restaurant_url, rest.crawl_id or '')
+            if key not in seen_urls:
+                seen_urls.add(key)
+                unique.append(rest)
+        else:
+            key = (
+                (rest.name or '').lower(),
+                rest.platform or '',
+                (rest.city or '').lower(),
+                rest.crawl_id or '',
+            )
+            if key not in seen_names:
+                seen_names.add(key)
+                unique.append(rest)
 
     logger.info(f"Deduplicated {len(restaurants)} -> {len(unique)} restaurants")
     return unique

@@ -8,6 +8,7 @@ Uber Eats page structure (as of 2022-2024):
 """
 import json
 import re
+import urllib.parse
 from typing import Optional
 from bs4 import BeautifulSoup, Tag
 
@@ -33,10 +34,13 @@ class UberEatsExtractor(BaseExtractor):
         if json_restaurants:
             restaurants.extend(json_restaurants)
 
-        # Try embedded React/Redux state
-        script_restaurants = self._extract_from_scripts(soup, url, date, city, crawl_id)
-        if script_restaurants:
-            restaurants.extend(script_restaurants)
+        # For individual store pages, skip script extraction if JSON-LD worked
+        is_store_page = '/store/' in url
+        if not (is_store_page and json_restaurants):
+            # Try embedded React/Redux state
+            script_restaurants = self._extract_from_scripts(soup, url, date, city, crawl_id)
+            if script_restaurants:
+                restaurants.extend(script_restaurants)
 
         # Try HTML extraction if no data from JSON
         if not restaurants:
@@ -61,7 +65,7 @@ class UberEatsExtractor(BaseExtractor):
         for pattern in patterns:
             match = re.search(pattern, url)
             if match:
-                city = match.group(1)
+                city = urllib.parse.unquote(match.group(1))
                 # Remove country/region suffix like "-es-an" or "-es-md"
                 city = re.sub(r'-es-[a-z]{2}$', '', city)
                 city = city.replace('-', ' ').title()
@@ -115,7 +119,7 @@ class UberEatsExtractor(BaseExtractor):
             item_type = item.get('@type', '')
 
         if item_type not in ['Restaurant', 'LocalBusiness', 'FoodEstablishment',
-                             'FoodService', 'Organization']:
+                             'FoodService']:
             return None
 
         name = item.get('name')
@@ -135,6 +139,9 @@ class UberEatsExtractor(BaseExtractor):
             address = ', '.join(p for p in parts if p)
             # Use addressLocality as the city/neighborhood
             neighborhood = address_obj.get('addressLocality', '')
+            # Strip ", Spain" suffix from addressLocality
+            if isinstance(neighborhood, str):
+                neighborhood = re.sub(r',\s*Spain$', '', neighborhood).strip()
         elif isinstance(address_obj, str):
             address = address_obj
 
@@ -322,6 +329,8 @@ class UberEatsExtractor(BaseExtractor):
                 rest = self._parse_html_card(card, url, date, city, crawl_id)
                 if rest:
                     restaurants.append(rest)
+            if restaurants:
+                break
 
         return restaurants
 

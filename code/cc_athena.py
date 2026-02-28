@@ -6,6 +6,7 @@ Athena queries the Common Crawl index directly from S3.
 """
 import json
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Optional
@@ -54,6 +55,10 @@ class AthenaIndexQuery:
         Returns:
             SQL query string
         """
+        # Validate crawl_id to prevent SQL injection
+        if not re.match(r'^[A-Za-z0-9\-]+$', crawl_id):
+            raise ValueError(f"Invalid crawl_id format: {crawl_id}")
+
         platform = PLATFORMS[platform_key]
 
         query = f"""

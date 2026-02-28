@@ -23,6 +23,11 @@ class GlovoExtractor(BaseExtractor):
     def extract_restaurants(self, html: str, url: str,
                            timestamp: str, crawl_id: str) -> list[Restaurant]:
         """Extract restaurants from Glovo listing page."""
+        # Skip non-restaurant URLs (supermarkets, pharmacies, shops)
+        non_restaurant_paths = ['/supermercados', '/parafarmacia', '/tiendas']
+        if any(p in url.lower() for p in non_restaurant_paths):
+            return []
+
         soup = self._get_soup(html)
         restaurants = []
 
@@ -31,8 +36,14 @@ class GlovoExtractor(BaseExtractor):
 
         # Check if this is an individual restaurant page (no store cards)
         # For individual pages, JSON-LD is more reliable
-        cards = soup.select('[class*="store-card"]')
-        is_listing_page = len(cards) > 0
+        # Use card container selectors (not sub-elements like rating-info)
+        listing_selectors = [
+            '[data-test-id="category-store-card"]',
+            'a.collection-item',
+            '[class*="store-card"]:not([class*="store-card-rating"]):not([class*="store-card-info"])',
+            '[class*="StoreCard"]',
+        ]
+        is_listing_page = any(soup.select(sel) for sel in listing_selectors)
 
         if is_listing_page:
             # Listing page: Extract from HTML store cards (most reliable)
@@ -64,7 +75,13 @@ class GlovoExtractor(BaseExtractor):
             city = re.sub(r'[-_]?restaurantes.*$', '', city, flags=re.IGNORECASE)
             city = re.sub(r'[-_]?\d+$', '', city)
             city = city.replace('-', ' ').replace('_', ' ').strip().title()
-            return city if city else None
+            if not city:
+                return None
+            # Filter out non-city values (UI labels, generic strings)
+            non_city_patterns = ['domicilio', 'delivery', 'glovo', 'banaketa']
+            if any(p in city.lower() for p in non_city_patterns):
+                return None
+            return city
         return None
 
     def _extract_from_html_cards(self, soup: BeautifulSoup, url: str,
@@ -73,12 +90,18 @@ class GlovoExtractor(BaseExtractor):
         restaurants = []
         seen_names = set()  # Deduplicate within page
 
-        # Find store cards - Glovo uses class*="store-card" pattern
-        cards = soup.select('[class*="store-card"]')
+        # Find store card containers (not sub-elements like rating-info)
+        cards = soup.select('[data-test-id="category-store-card"]')
 
         if not cards:
-            # Try alternative selectors
-            cards = soup.select('[class*="StoreCard"], [data-test-id*="store"], a[href*="/es/es/"][href$="/"]')
+            cards = soup.select('a.collection-item')
+
+        if not cards:
+            # Broader selectors, excluding known sub-elements
+            cards = soup.select(
+                '[class*="StoreCard"], [data-test-id*="store"],'
+                ' a[href*="/es/es/"][href$="/"]'
+            )
 
         for card in cards:
             try:
@@ -113,9 +136,14 @@ class GlovoExtractor(BaseExtractor):
         if not name:
             return None
 
-        # Skip if name looks like a category or navigation item
+        # Skip if name looks like a category, navigation item, or promo
         skip_patterns = ['restaurantes', 'ver más', 'ver todo', 'categoría', 'filtro',
-                        'ordenar', 'buscar', 'envío', 'delivery']
+                        'ordenar', 'buscar', 'envío', 'delivery',
+                        # Discount / promo strings
+                        '-30%', '-20%', '-10%', '2x1', '1+1',
+                        'sort by', 'ordenar por',
+                        # Category names (not restaurant names)
+                        'comida', 'supermercado', 'snacks', 'tiendas', 'parafarmacia']
         if any(p in name.lower() for p in skip_patterns):
             return None
 
@@ -175,10 +203,13 @@ class GlovoExtractor(BaseExtractor):
         # Extract food category from URL path
         food_type = None
         if url:
-            # URL pattern: /restaurantes_1/{category}/
-            cat_match = re.search(r'/restaurantes[^/]*/([^/]+)', url)
+            # URL patterns: /restaurantes_1/{category}/, /restaurants_1/{category}/,
+            # /menjar_1/{category}/, /comida_1/{category}/
+            cat_match = re.search(r'/(?:restaurantes|restaurants|menjar|comida)[^/]*/([^/]+)', url)
             if cat_match:
                 cat = cat_match.group(1)
+                # Strip trailing numeric IDs (e.g., "_34835")
+                cat = re.sub(r'_\d+$', '', cat)
                 if cat not in ['search-glovo', 'gasthof'] and not cat.startswith('search'):
                     food_type = cat.replace('-', ' ').replace('_', ' ').title()
 

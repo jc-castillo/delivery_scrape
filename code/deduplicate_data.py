@@ -24,7 +24,9 @@ RESTAURANTS_DIR = DATA_DIR / "restaurants"
 
 def deduplicate_csv(input_path: Path, output_path: Path = None) -> pd.DataFrame:
     """
-    Deduplicate restaurants by name + platform + city + crawl_id.
+    Deduplicate restaurants using two strategies:
+    - Primary: (restaurant_url, crawl_id) for rows with a URL
+    - Fallback: (name, platform, city, crawl_id) for rows without a URL
 
     Args:
         input_path: Path to input CSV
@@ -42,17 +44,26 @@ def deduplicate_csv(input_path: Path, output_path: Path = None) -> pd.DataFrame:
     original_count = len(df)
     logger.info(f"Original row count: {original_count:,}")
 
-    # Normalize name and city for comparison (lowercase, strip whitespace)
-    df['_name_norm'] = df['name'].fillna('').str.lower().str.strip()
-    df['_city_norm'] = df['city'].fillna('').str.lower().str.strip()
+    # Split into rows with and without restaurant_url
+    has_url = df['restaurant_url'].notna() & (df['restaurant_url'] != '')
+    df_with_url = df[has_url].copy()
+    df_without_url = df[~has_url].copy()
 
-    # Dedup by name + platform + city + crawl_id
-    # Keep first occurrence (arbitrary, could also keep one with most data)
-    dedup_cols = ['_name_norm', 'platform', '_city_norm', 'crawl_id']
-    df_dedup = df.drop_duplicates(subset=dedup_cols, keep='first')
+    # Dedup URL-based rows by (restaurant_url, crawl_id)
+    df_with_url_dedup = df_with_url.drop_duplicates(
+        subset=['restaurant_url', 'crawl_id'], keep='first'
+    )
 
-    # Remove temp columns
-    df_dedup = df_dedup.drop(columns=['_name_norm', '_city_norm'])
+    # Dedup name-based rows by (name, platform, city, crawl_id)
+    df_without_url['_name_norm'] = df_without_url['name'].fillna('').str.lower().str.strip()
+    df_without_url['_city_norm'] = df_without_url['city'].fillna('').str.lower().str.strip()
+    df_without_url_dedup = df_without_url.drop_duplicates(
+        subset=['_name_norm', 'platform', '_city_norm', 'crawl_id'], keep='first'
+    )
+    df_without_url_dedup = df_without_url_dedup.drop(columns=['_name_norm', '_city_norm'])
+
+    # Combine
+    df_dedup = pd.concat([df_with_url_dedup, df_without_url_dedup], ignore_index=True)
 
     dedup_count = len(df_dedup)
     removed = original_count - dedup_count

@@ -1,6 +1,7 @@
 """
 Base extractor class and data models.
 """
+import html as html_module
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
@@ -111,6 +112,7 @@ class BaseExtractor(ABC):
         """Clean and normalize text."""
         if text is None:
             return None
+        text = html_module.unescape(text)
         return ' '.join(text.strip().split())
 
     def _parse_rating(self, text: Optional[str]) -> Optional[float]:

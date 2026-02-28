@@ -320,13 +320,15 @@ def main():
     crawl_ids = args.crawl if args.crawl else CC_INDEXES
 
     # Run pipeline
+    index_file = None
+
     if args.all or args.step == "index":
         index_file = run_index_step(crawl_ids, use_cache=not args.no_cache)
 
     if args.all or args.step == "fetch":
         if args.index_file:
             index_file = Path(args.index_file)
-        elif not args.all and not hasattr(locals(), 'index_file'):
+        elif index_file is None:
             index_file = DATA_DIR / "index_results.json"
 
         run_fetch_step(
