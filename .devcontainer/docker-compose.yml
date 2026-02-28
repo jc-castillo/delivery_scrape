@@ -1,0 +1,14 @@
+services:
+  delivery-scrape-sandbox:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    volumes:
+      - ..:/home/dev/delivery_scrape                   # Project files (shared with Cursor)
+      - ~/.claude:/home/dev/.claude                    # Claude Code auth & state
+    hostname: delivery-scrape-sandbox
+    env_file:
+      - ../.env                                        # Load GH_TOKEN from project root
+    working_dir: /home/dev/delivery_scrape
+    stdin_open: true
+    tty: true
