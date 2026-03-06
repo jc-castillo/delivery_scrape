@@ -44,6 +44,10 @@ Thumbs.db
 pages/
 logs/
 
+# Extracted data - CSV outputs (parquet files are committed instead)
+data/restaurants_spain.csv
+data/restaurants/*.csv
+
 # Secrets (never commit these!)
 accessKeys.csv
 credentials.csv
