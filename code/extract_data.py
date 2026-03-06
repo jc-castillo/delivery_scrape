@@ -4,7 +4,6 @@ Extract restaurant data from downloaded HTML pages.
 This module processes HTML files and extracts structured restaurant data,
 outputting to a consolidated CSV file and per-crawl/per-platform parquet files.
 """
-import csv
 import json
 import logging
 from pathlib import Path
@@ -14,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
 
-from config import PAGES_DIR, DATA_DIR, OUTPUT_CSV
+from config import PAGES_DIR, DATA_DIR
 from extractors import get_extractor, Restaurant
 
 # Output directory for per-crawl/per-platform files
@@ -169,39 +168,12 @@ def deduplicate_restaurants(restaurants: list[Restaurant]) -> list[Restaurant]:
     return unique
 
 
-def save_to_csv(restaurants: list[Restaurant], output_path: Path = OUTPUT_CSV):
-    """
-    Save restaurants to CSV file.
-
-    Args:
-        restaurants: List of Restaurant objects
-        output_path: Path to output CSV file
-    """
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    headers = Restaurant.csv_headers()
-
-    with open(output_path, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=headers)
-        writer.writeheader()
-
-        for rest in restaurants:
-            row = rest.to_dict()
-            # Convert list fields to strings
-            if isinstance(row.get('categories'), list):
-                row['categories'] = '|'.join(row['categories'])
-            writer.writerow(row)
-
-    logger.info(f"Saved {len(restaurants)} restaurants to {output_path}")
-
-
 def save_per_crawl_platform(restaurants: list[Restaurant],
                             output_dir: Path = RESTAURANTS_DIR):
     """
     Save restaurants to separate files per crawl and platform.
 
-    Creates both CSV and Parquet files in the format:
-    {output_dir}/{crawl_id}_{platform}.csv
+    Creates Parquet files in the format:
     {output_dir}/{crawl_id}_{platform}.parquet
 
     Args:
@@ -223,7 +195,6 @@ def save_per_crawl_platform(restaurants: list[Restaurant],
         rows = []
         for rest in rests:
             row = rest.to_dict()
-            # Convert list fields to strings for CSV compatibility
             if isinstance(row.get('categories'), list):
                 row['categories'] = '|'.join(row['categories'])
             rows.append(row)
@@ -245,15 +216,10 @@ def save_per_crawl_platform(restaurants: list[Restaurant],
         safe_crawl_id = crawl_id.replace('/', '-')
         base_name = f"{safe_crawl_id}_{platform}"
 
-        # Save as CSV
-        csv_path = output_dir / f"{base_name}.csv"
-        df.to_csv(csv_path, index=False, encoding='utf-8')
-
-        # Save as Parquet
         parquet_path = output_dir / f"{base_name}.parquet"
         df.to_parquet(parquet_path, index=False, engine='pyarrow')
 
-        logger.info(f"  Saved {len(rests)} restaurants to {base_name}.csv and .parquet")
+        logger.info(f"  Saved {len(rests)} restaurants to {base_name}.parquet")
 
 
 def generate_summary(restaurants: list[Restaurant]) -> dict:
@@ -293,6 +259,107 @@ def generate_summary(restaurants: list[Restaurant]) -> dict:
     return summary
 
 
+def extract_crawl(crawl_id: str, pages_dir: Path = PAGES_DIR,
+                  max_workers: int = 4, no_dedup: bool = False) -> int:
+    """
+    Extract restaurants for a single crawl and save per-crawl/platform files.
+
+    Returns number of unique restaurants saved.
+    """
+    crawl_pages_dirs = [
+        pages_dir / platform / crawl_id
+        for platform in ['glovo', 'justeat', 'ubereats']
+    ]
+
+    files = []
+    for d in crawl_pages_dirs:
+        if d.exists():
+            for html_file in d.rglob('*.html'):
+                meta_file = html_file.with_suffix('.json')
+                if meta_file.exists():
+                    with open(meta_file) as f:
+                        metadata = json.load(f)
+                    files.append((html_file, metadata))
+
+    if not files:
+        logger.warning(f"No HTML files found for {crawl_id}")
+        return 0
+
+    logger.info(f"Processing {crawl_id}: {len(files)} files")
+    restaurants = []
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_file = {
+            executor.submit(extract_from_file, path, meta): path
+            for path, meta in files
+        }
+        for i, future in enumerate(as_completed(future_to_file)):
+            path = future_to_file[future]
+            try:
+                result = future.result()
+                restaurants.extend(result)
+                if result:
+                    logger.info(f"  [{i+1}/{len(files)}] {len(result)} from {path.name}")
+            except Exception as e:
+                logger.error(f"Error processing {path}: {e}")
+
+    if not no_dedup:
+        restaurants = deduplicate_restaurants(restaurants)
+
+    save_per_crawl_platform(restaurants)
+    logger.info(f"  {crawl_id}: saved {len(restaurants)} unique restaurants")
+    return len(restaurants)
+
+
+def combine_parquets(restaurants_dir: Path = None) -> int:
+    """
+    Read all per-crawl Parquet files and generate summary stats.
+
+    Returns total number of restaurants.
+    """
+    if restaurants_dir is None:
+        restaurants_dir = RESTAURANTS_DIR
+
+    parquet_files = sorted(restaurants_dir.glob('*.parquet'))
+    if not parquet_files:
+        logger.error("No parquet files found")
+        return 0
+
+    logger.info(f"Combining {len(parquet_files)} parquet files...")
+    dfs = []
+    for pf in parquet_files:
+        df = pd.read_parquet(pf, engine='pyarrow')
+        dfs.append(df)
+
+    combined = pd.concat(dfs, ignore_index=True)
+    logger.info(f"Combined: {len(combined)} rows")
+
+    # Build summary directly from dataframe (memory-efficient)
+    summary = {
+        'total_restaurants': len(combined),
+        'by_platform': combined['platform'].value_counts().to_dict() if 'platform' in combined.columns else {},
+        'by_crawl': combined['crawl_id'].value_counts().to_dict() if 'crawl_id' in combined.columns else {},
+        'by_city': combined['city'].value_counts().to_dict() if 'city' in combined.columns else {},
+        'by_date': combined['date'].value_counts().to_dict() if 'date' in combined.columns else {},
+    }
+    if 'crawl_id' in combined.columns and 'platform' in combined.columns:
+        summary['by_crawl_platform'] = {
+            crawl: grp['platform'].value_counts().to_dict()
+            for crawl, grp in combined.groupby('crawl_id')
+        }
+    if 'platform' in combined.columns and 'city' in combined.columns:
+        summary['by_platform_city'] = {
+            platform: grp['city'].value_counts().to_dict()
+            for platform, grp in combined.groupby('platform')
+        }
+    summary_path = DATA_DIR / 'restaurants_spain.summary.json'
+    with open(summary_path, 'w') as f:
+        json.dump(summary, f, indent=2)
+    logger.info(f"Saved summary to {summary_path}")
+
+    return len(combined)
+
+
 def main():
     """Main extraction function."""
     import argparse
@@ -306,11 +373,6 @@ def main():
         help="Directory containing HTML files"
     )
     parser.add_argument(
-        "--output", "-o",
-        default=str(OUTPUT_CSV),
-        help="Output CSV file path"
-    )
-    parser.add_argument(
         "--workers", "-w",
         type=int,
         default=4,
@@ -321,59 +383,45 @@ def main():
         action="store_true",
         help="Skip deduplication"
     )
+    parser.add_argument(
+        "--crawl",
+        nargs='+',
+        help="Process only specific crawl ID(s) (e.g. CC-MAIN-2024-22)"
+    )
+    parser.add_argument(
+        "--combine-only",
+        action="store_true",
+        help="Skip extraction; just combine existing per-crawl Parquet files and regenerate summary"
+    )
 
     args = parser.parse_args()
 
     pages_dir = Path(args.pages_dir)
-    output_path = Path(args.output)
 
-    # Extract all restaurants
-    logger.info("Starting extraction...")
-    restaurants = extract_all(pages_dir, max_workers=args.workers)
-
-    if not restaurants:
-        logger.warning("No restaurants extracted!")
+    if args.combine_only:
+        total = combine_parquets()
+        print(f"\nTotal restaurants: {total}")
         return
 
-    # Deduplicate
-    if not args.no_dedup:
-        restaurants = deduplicate_restaurants(restaurants)
+    if args.crawl:
+        # Per-crawl mode: process one crawl at a time
+        for crawl_id in args.crawl:
+            extract_crawl(crawl_id, pages_dir, args.workers, args.no_dedup)
+        # After processing requested crawls, regenerate summary
+        total = combine_parquets()
+        print(f"\nTotal after combine: {total} restaurants")
+        return
 
-    # Save to CSV (consolidated)
-    save_to_csv(restaurants, output_path)
+    # Default: process all crawls sequentially (memory-safe)
+    from config import CC_INDEXES
+    logger.info("Starting extraction (per-crawl mode)...")
 
-    # Save per crawl/platform files (CSV + Parquet)
-    save_per_crawl_platform(restaurants)
+    for crawl_id in CC_INDEXES:
+        extract_crawl(crawl_id, pages_dir, args.workers, args.no_dedup)
 
-    # Generate and save summary
-    summary = generate_summary(restaurants)
-    summary_path = output_path.with_suffix('.summary.json')
-    with open(summary_path, 'w') as f:
-        json.dump(summary, f, indent=2)
+    total = combine_parquets()
 
-    # Print summary
-    print("\n" + "="*50)
-    print("EXTRACTION SUMMARY")
-    print("="*50)
-    print(f"Total restaurants: {summary['total_restaurants']}")
-    print("\nBy platform:")
-    for platform, count in sorted(summary['by_platform'].items()):
-        print(f"  {platform}: {count}")
-    print("\nBy city (top 10):")
-    sorted_cities = sorted(summary['by_city'].items(), key=lambda x: -x[1])[:10]
-    for city, count in sorted_cities:
-        print(f"  {city}: {count}")
-    print("\nBy date (first and last 3):")
-    sorted_dates = sorted(summary['by_date'].items())
-    for date, count in sorted_dates[:3]:
-        print(f"  {date}: {count}")
-    if len(sorted_dates) > 6:
-        print("  ...")
-    for date, count in sorted_dates[-3:]:
-        print(f"  {date}: {count}")
-
-    print(f"\nOutput saved to: {output_path}")
-    print(f"Summary saved to: {summary_path}")
+    print(f"\nTotal restaurants: {total}")
 
 
 if __name__ == "__main__":

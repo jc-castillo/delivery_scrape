@@ -200,6 +200,99 @@ class JustEatExtractor(BaseExtractor):
 
         return restaurants
 
+    def _extract_from_next_data(self, script_text: str, url: str,
+                                date: str, city: str, crawl_id: str) -> list[Restaurant]:
+        """Extract from __NEXT_DATA__ (Next.js, Just Eat 2024-26 onwards).
+
+        Data is at: props.appProps.preloadedState.discovery.restaurantList.restaurantData
+        restaurantData is a dict keyed by restaurant ID.
+        """
+        try:
+            data = json.loads(script_text)
+        except json.JSONDecodeError:
+            return []
+
+        restaurant_data = (
+            data
+            .get('props', {})
+            .get('appProps', {})
+            .get('preloadedState', {})
+            .get('discovery', {})
+            .get('restaurantList', {})
+            .get('restaurantData', {})
+        )
+
+        if not restaurant_data or not isinstance(restaurant_data, dict):
+            return []
+
+        results: list[Restaurant] = []
+        for r in restaurant_data.values():
+            if not isinstance(r, dict):
+                continue
+            name = r.get('name', '')
+            if not name:
+                continue
+
+            unique_name = r.get('uniqueName', '')
+            rest_url = (f'https://www.just-eat.es/restaurants-{unique_name}'
+                        if unique_name else None)
+
+            cuisines_raw = r.get('cuisines', [])
+            if not isinstance(cuisines_raw, list):
+                cuisines_raw = []
+            cuisines = [c.get('name', '') for c in cuisines_raw
+                        if isinstance(c, dict) and c.get('name')]
+
+            addr = r.get('address', {})
+            city_val = addr.get('city') or city or ''
+            address = addr.get('firstLine')
+            coords = addr.get('location', {}).get('coordinates', [])
+            lon = coords[0] if len(coords) > 0 else None
+            lat = coords[1] if len(coords) > 1 else None
+
+            rating_data = r.get('rating', {})
+            rating = rating_data.get('starRating')
+            num_ratings = rating_data.get('count')
+
+            # deliveryCost is in euros (int), minimumDeliveryValue in euros
+            raw_fee = r.get('deliveryCost')
+            delivery_fee = str(raw_fee) if raw_fee is not None else None
+            raw_min = r.get('minimumDeliveryValue')
+            min_order = str(raw_min) if raw_min is not None else None
+
+            eta = r.get('deliveryEtaMinutes', {})
+            lo, hi = eta.get('rangeLower'), eta.get('rangeUpper')
+            if lo and hi:
+                delivery_time = f'{lo}-{hi} min'
+            elif lo:
+                delivery_time = f'{lo} min'
+            else:
+                delivery_time = None
+
+            results.append(Restaurant(
+                name=self._clean_text(name),
+                platform=self.platform_name,
+                city=city_val,
+                date=date,
+                address=self._clean_text(address) if address else None,
+                food_type=cuisines[0] if cuisines else None,
+                categories=cuisines,
+                rating=float(rating) if rating is not None else None,
+                num_ratings=int(num_ratings) if num_ratings is not None else None,
+                delivery_fee=delivery_fee,
+                delivery_time=delivery_time,
+                min_order=min_order,
+                is_new=r.get('isNew', False),
+                latitude=float(lat) if lat is not None else None,
+                longitude=float(lon) if lon is not None else None,
+                restaurant_url=rest_url,
+                image_url=r.get('logoUrl'),
+                source_url=url,
+                crawl_id=crawl_id,
+            ))
+
+        return results
+
     def _extract_from_json_ld(self, soup: BeautifulSoup, url: str,
                               date: str, city: str, crawl_id: str) -> list[Restaurant]:
         """Extract from JSON-LD structured data."""
@@ -321,15 +414,12 @@ class JustEatExtractor(BaseExtractor):
         """Extract from embedded JavaScript data."""
         restaurants = []
 
-        # Try __NEXT_DATA__ (Next.js pages, CC-MAIN-2025-08+)
+        # Try __NEXT_DATA__ (Next.js pages, 2024-26+)
         next_data_script = soup.find('script', id='__NEXT_DATA__')
         if next_data_script and next_data_script.string:
-            try:
-                next_data = json.loads(next_data_script.string)
-                rests = self._parse_embedded_data(next_data, url, date, city, crawl_id)
+            rests = self._extract_from_next_data(next_data_script.string, url, date, city, crawl_id)
+            if rests:
                 restaurants.extend(rests)
-            except json.JSONDecodeError:
-                pass
 
         for script in soup.find_all('script'):
             if not script.string:
@@ -538,6 +628,8 @@ class JustEatExtractor(BaseExtractor):
         # Find restaurant name - try multiple patterns
         name = None
         name_selectors = [
+            # 2024-33+ structure (obfuscated CSS classes, uses data-qa)
+            '[data-qa="restaurant-info-name"]',
             # 2024+ structure
             '[data-qa="restaurant-name"]',
             '[class*="restaurant-name"]',
@@ -557,6 +649,12 @@ class JustEatExtractor(BaseExtractor):
                     name = text
                     break
 
+        # Fallback: parent <a> tag title attribute
+        if not name and card.parent and card.parent.name == 'a':
+            title = card.parent.get('title', '')
+            if title and len(title) > 1:
+                name = title
+
         if not name:
             return None
 
@@ -566,6 +664,7 @@ class JustEatExtractor(BaseExtractor):
         # Extract rating
         rating = None
         rating_elem = card.select_one(
+            '[data-qa="restaurant-ratings"], '
             '[data-qa="rating"], '
             '[data-qa="restaurant-rating"], '
             '[data-test-id="rating"], '
@@ -586,6 +685,7 @@ class JustEatExtractor(BaseExtractor):
         # Extract delivery time
         delivery_time = None
         time_elem = card.select_one(
+            '[data-qa="restaurant-eta"], '
             '[data-test-id="eta"], '
             '[class*="deliveryTime"], '
             '[class*="EtaText"]'
@@ -594,8 +694,26 @@ class JustEatExtractor(BaseExtractor):
             delivery_time = self._clean_text(time_elem.get_text())
 
         # Extract cuisines
+        # Check selectors in priority order (CSS comma-selector uses document order, not priority)
         categories = []
-        cuisine_elem = card.select_one('[data-qa="restaurant-tags"], [data-test-id="restaurant-cuisines"], [data-test-id="cuisines"], [class*="cuisine"]')
+        # Non-cuisine tags to filter out
+        _non_cuisine_tags = {'tarjeta de sellos', 'patrocinado', 'nuevo', 'oferta', 'sponsored', 'nuevo restaurante'}
+        cuisine_elem = (
+            card.select_one('[data-qa="restaurant-cuisine"]')
+            or card.select_one('[data-test-id="restaurant-cuisines"]')
+            or card.select_one('[data-test-id="cuisines"]')
+            or card.select_one('[class*="cuisine"]')
+        )
+        if not cuisine_elem:
+            # Fallback to restaurant-tags, but filter out non-cuisine promotional tags
+            tags_container = card.select_one('[data-qa="restaurant-tags"]')
+            if tags_container:
+                # Only use if it contains actual cuisine text (not just promo tags)
+                tag_texts = [t.get_text(strip=True) for t in tags_container.find_all(True)]
+                cuisine_texts = [t for t in tag_texts if t and t.lower() not in _non_cuisine_tags]
+                if cuisine_texts:
+                    categories = cuisine_texts
+
         if cuisine_elem:
             # Get text content, filtering out empty spans
             text_parts = []
@@ -617,10 +735,12 @@ class JustEatExtractor(BaseExtractor):
         if addr_elem:
             address = self._clean_text(addr_elem.get_text())
 
-        # Get restaurant URL
+        # Get restaurant URL - check parent <a> first (2024-33+ structure)
         rest_url = None
         if card.name == 'a':
             rest_url = card.get('href', '')
+        elif card.parent and card.parent.name == 'a':
+            rest_url = card.parent.get('href', '')
         else:
             link = card.find('a', href=True)
             if link:

@@ -13,7 +13,7 @@ import pandas as pd
 from bs4 import BeautifulSoup
 
 sys.path.insert(0, str(Path(__file__).parent))
-from config import PAGES_DIR, DATA_DIR, OUTPUT_CSV
+from config import PAGES_DIR, DATA_DIR
 
 PLATFORM_DIR_MAP = {'Glovo': 'glovo', 'Just Eat': 'justeat', 'Uber Eats': 'ubereats'}
 
@@ -309,9 +309,11 @@ def main():
     print("STEP 3: DATA QUALITY & EXTRACTOR ROBUSTNESS")
     print("=" * 70)
 
-    # Load CSV
-    df = pd.read_csv(OUTPUT_CSV, low_memory=False)
-    print(f"Loaded {len(df):,} rows from {OUTPUT_CSV}\n")
+    # Load from parquet files
+    restaurants_dir = DATA_DIR / "restaurants"
+    parquet_files = sorted(restaurants_dir.glob('*.parquet'))
+    df = pd.concat([pd.read_parquet(f) for f in parquet_files], ignore_index=True)
+    print(f"Loaded {len(df):,} rows from {len(parquet_files)} parquet files\n")
 
     all_issues = []
 
